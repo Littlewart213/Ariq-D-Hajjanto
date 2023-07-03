@@ -169,7 +169,16 @@ def train_model(train_loader, test_loader, epochs, train_batch_size, test_batch_
 
         if stop_training:
             break
+        
+    train_accuracy = sum(train_correct) / len(train_correct)
+    test_accuracy = sum(test_correct) / len(test_correct)
+    train_loss = sum(train_losses) / len(train_losses)
+    test_loss = sum(test_losses) / len(test_losses)
 
+    st.write(f"\nAverage Training Accuracy: {train_accuracy:.4f}")
+    st.write(f"Average Test Accuracy: {test_accuracy:.4f}")
+    st.write(f"Average Training Loss: {train_loss:.6f}")
+    st.write(f"Average Test Loss: {test_loss:.6f}")
     st.write(f'\nDuration: {time.time() - start_time:.0f} seconds')
     st.write("Training completed!")
 
