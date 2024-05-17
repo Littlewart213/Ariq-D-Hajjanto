@@ -5,7 +5,7 @@ Developed an algorithm for controlling sound volume through hand gesture detecti
 
 
 
-n/<img width="360" alt="image" src="https://github.com/Littlewart213/Image-Analysis-Using-ANN/assets/138422330/ca7995ed-7f4e-418b-9abc-7f4d865c85e6">
+ <img width="360" alt="image" src="https://github.com/Littlewart213/Image-Analysis-Using-ANN/assets/138422330/ca7995ed-7f4e-418b-9abc-7f4d865c85e6">
 
 
 
