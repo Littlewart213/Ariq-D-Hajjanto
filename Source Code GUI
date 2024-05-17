@@ -3,29 +3,27 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-import numpy as np
-import pandas as pd
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
 import streamlit as st
 import time
-
-# Check whether PyTorch is installed
-torch.__version__
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import numpy as np  # Import numpy for numerical operations
 
 # Set up the transforms
-transform = transforms.ToTensor()
+transform = transforms.Compose([
+    transforms.ToTensor(),  # Convert images to tensors
+    transforms.Normalize((0.5,), (0.5,))  # Normalize the pixel values to the range [-1, 1]
+])
 
-# input MNIST dataset
-train_data = datasets.MNIST(root='/CNN/Data', train=True, download=True, transform=transform)
-test_data = datasets.MNIST(root='/CNN/Data', train=False, download=True, transform=transform)
+# Input MNIST dataset
+train_data = datasets.MNIST(root='./Data', train=True, download=True, transform=transform)
+test_data = datasets.MNIST(root='./Data', train=False, download=True, transform=transform)
 
-# sidebar untuk input
+# Sidebar for input
 dataset = st.sidebar.text_input("Dataset:", value="MNIST")
 model_name = st.sidebar.text_input("Model Name:", value="model-mnist")
 
-# main function
+# Main function
 def main():
     st.title("FP Multimodal Biomedical Image Analysis (Ariq D. Hajjanto/5023201057)")
     menu = ["Home", "Dataset", "Artificial Neural Network"]
@@ -33,55 +31,50 @@ def main():
 
     if choice == "Home":
         st.subheader("Home")
+        st.write("Welcome to MNIST Classification!")
     elif choice == "Artificial Neural Network":
-        st.subheader("ANN")
+        st.subheader("ANN - MNIST Classification")
+        st.write("Training and evaluating an Artificial Neural Network on MNIST dataset.")
 
-    traindata = int(st.sidebar.number_input("Training Data Number:", min_value=1, max_value=600))
-    image, label = train_data[traindata]
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 4))
-    ax.imshow(train_data[traindata][0].reshape((28, 28)), cmap="gray")
-    ax.set_title('Train Data')
-    st.pyplot(fig)
+        torch.manual_seed(101)
+        train_batch_size = int(st.sidebar.number_input("Train Batch Size:", min_value=1, max_value=600, value=64))
+        test_batch_size = int(st.sidebar.number_input("Test Batch Size:", min_value=1, max_value=600, value=100))
+        epochs = st.sidebar.slider('Enter Epoch Value', 1, 20, 1)
+        learning_rate = st.sidebar.number_input("Learning Rate:", value=0.001)
 
-    st.write(f'Shape: {image.shape}')
-    st.write(f'Label: {label}')
+        stop_training = False
 
-    torch.manual_seed(101)
-    train_batch_size = int(st.sidebar.number_input("Train Batch Size:", min_value=1, max_value=600))
-    test_batch_size = int(st.sidebar.number_input("Test Batch Size:", min_value=1, max_value=600))
-    epochs = st.sidebar.slider('Enter Epoch Value', 0, 20, 1)
-    learning_rate = st.sidebar.number_input("Learning Rate:", value=0.001)
+        if st.sidebar.button("Start Training"):
+            train_loader = DataLoader(train_data, batch_size=train_batch_size, shuffle=True)
+            test_loader = DataLoader(test_data, batch_size=test_batch_size, shuffle=False)
+            model = train_model(train_loader, test_loader, epochs, learning_rate)
 
-    stop_training = False
+            # Show confusion matrix
+            cm, class_labels = show_confusion_matrix(test_loader, model)
+            st.write("Confusion Matrix")
+            st.write(class_labels)
+            st.write(cm)
 
-    if st.sidebar.button("Start"):
-        train_loader = DataLoader(train_data, batch_size=train_batch_size, shuffle=True)
-        test_loader = DataLoader(test_data, batch_size=test_batch_size, shuffle=False)
-        model = train_model(train_loader, test_loader, epochs, train_batch_size, test_batch_size, learning_rate, stop_training)
-
-        # Show confusion matrix
-        show_confusion_matrix(test_loader, model)
-
-    if st.sidebar.button("Stop"):
-        stop_training = True
-        st.write("Training will stop at the end of the current epoch.")
+        if st.sidebar.button("Stop Training"):
+            stop_training = True
+            st.write("Training will stop at the end of the current epoch.")
 
 # Function to define the model architecture
 class MultilayerPerceptron(nn.Module):
-    def __init__(self, in_sz=784, out_sz=10, layers=[120, 84]):
+    def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(in_sz, layers[0])
-        self.fc2 = nn.Linear(layers[0], layers[1])
-        self.fc3 = nn.Linear(layers[1], out_sz)
+        self.fc1 = nn.Linear(28*28, 128)  # Input layer: 784 (28x28) -> 128
+        self.fc2 = nn.Linear(128, 64)    # Hidden layer 1: 128 -> 64
+        self.fc3 = nn.Linear(64, 10)     # Output layer: 64 -> 10 (0-9 digits)
 
-    def forward(self, X):
-        X = F.relu(self.fc1(X))
-        X = F.relu(self.fc2(X))
-        X = self.fc3(X)
-        return F.log_softmax(X, dim=1)
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)      # Flatten the input tensor
+        x = F.relu(self.fc1(x))         # ReLU activation for hidden layer 1
+        x = F.relu(self.fc2(x))         # ReLU activation for hidden layer 2
+        x = self.fc3(x)                 # Output layer
+        return F.log_softmax(x, dim=1)  # Log softmax activation for output
 
-def train_model(train_loader, test_loader, epochs, train_batch_size, test_batch_size, learning_rate, stop_training):
-    # Inisalisasi
+def train_model(train_loader, test_loader, epochs, learning_rate):
     model = MultilayerPerceptron()
 
     # Set up the optimizer and criterion
@@ -106,22 +99,12 @@ def train_model(train_loader, test_loader, epochs, train_batch_size, test_batch_
     # Create an empty placeholder for displaying progress
     progress_placeholder = st.empty()
 
-    iteration = 0
     for epoch in range(epochs):
-        if stop_training:
-            break
-
-        # Set the model to train mode
         model.train()
         trn_corr = 0
-        tst_corr = 0
-
         for batch, (X_train, y_train) in enumerate(train_loader):
             if train_on_gpu:
                 X_train, y_train = X_train.cuda(), y_train.cuda()
-
-            # Flatten the image tensors
-            X_train = X_train.view(X_train.shape[0], -1)
 
             optimizer.zero_grad()
             output = model(X_train)
@@ -136,44 +119,21 @@ def train_model(train_loader, test_loader, epochs, train_batch_size, test_batch_
 
             # Append the losses and accuracies for each iteration
             train_losses.append(loss.item())
-            train_correct.append(batch_corr.item() / train_batch_size)
-            iteration += 1
+            train_correct.append(batch_corr.item() / train_loader.batch_size)
 
             # Update the progress display
-            progress_placeholder.text(f"Epoch: {epoch+1}/{epochs}, Batch: {batch+1}/{len(train_loader)}, Loss: {loss.item():.6f}, Accuracy: {batch_corr.item() / train_batch_size:.4f}")
+            progress_placeholder.text(f"Epoch: {epoch+1}/{epochs}, Batch: {batch+1}/{len(train_loader)}, Loss: {loss.item():.6f}, Accuracy: {batch_corr.item() / train_loader.batch_size:.4f}")
 
-        # Set the model to evaluation mode
-        model.eval()
+        # Evaluate on the test set
+        test_loss, test_acc = evaluate_model(model, test_loader, criterion, train_on_gpu)
+        test_losses.append(test_loss)
+        test_correct.append(test_acc)
 
-        with torch.no_grad():
-            for batch, (X_test, y_test) in enumerate(test_loader):
-                if train_on_gpu:
-                    X_test, y_test = X_test.cuda(), y_test.cuda()
-
-                # Flatten the image tensors
-                X_test = X_test.view(X_test.shape[0], -1)
-
-                # Make predictions
-                y_val = model(X_test)
-
-                # Calculate the loss
-                loss = criterion(y_val, y_test)
-
-                # Track the testing loss and accuracy for each iteration
-                predicted = torch.max(y_val.data, 1)[1]
-                tst_corr += (predicted == y_test).sum()
-
-                # Append the losses and accuracies for each iteration
-                test_losses.append(loss.item())
-                test_correct.append((predicted == y_test).sum().item() / test_batch_size)
-
-        if stop_training:
-            break
-        
-    train_accuracy = sum(train_correct) / len(train_correct)
-    test_accuracy = sum(test_correct) / len(test_correct)
-    train_loss = sum(train_losses) / len(train_losses)
-    test_loss = sum(test_losses) / len(test_losses)
+    # Calculate average loss and accuracy
+    train_loss = np.mean(train_losses)
+    train_accuracy = np.mean(train_correct)
+    test_loss = np.mean(test_losses)
+    test_accuracy = np.mean(test_correct)
 
     st.write(f"\nAverage Training Accuracy: {train_accuracy:.4f}")
     st.write(f"Average Test Accuracy: {test_accuracy:.4f}")
@@ -190,12 +150,37 @@ def train_model(train_loader, test_loader, epochs, train_batch_size, test_batch_
     plt.ylabel('Value')
     plt.title('Training Loss and Accuracy')
     plt.legend()
-    st.pyplot(plt)
+
+    # Display the plot using st.pyplot() instead of plt.show()
+    st.pyplot()
 
     return model
 
+def evaluate_model(model, test_loader, criterion, train_on_gpu):
+    model.eval()
+
+    test_loss = 0.0
+    correct = 0
+
+    with torch.no_grad():
+        for X_test, y_test in test_loader:
+            if train_on_gpu:
+                X_test, y_test = X_test.cuda(), y_test.cuda()
+
+            output = model(X_test)
+            loss = criterion(output, y_test)
+            test_loss += loss.item()
+
+            # Calculate accuracy
+            _, predicted = torch.max(output, 1)
+            correct += (predicted == y_test).sum().item()
+
+    test_loss /= len(test_loader.dataset)
+    test_acc = correct / len(test_loader.dataset)
+
+    return test_loss, test_acc
+
 def show_confusion_matrix(test_loader, model):
-    # Set the model to evaluation mode
     model.eval()
 
     # Check if a GPU is available
@@ -203,38 +188,35 @@ def show_confusion_matrix(test_loader, model):
     if train_on_gpu:
         model.cuda()
 
-    # Create empty lists to store the true labels and predicted labels
     true_labels = []
     predicted_labels = []
 
     with torch.no_grad():
-        for batch, (X_test, y_test) in enumerate(test_loader):
+        for X_test, y_test in test_loader:
             if train_on_gpu:
                 X_test, y_test = X_test.cuda(), y_test.cuda()
 
-            # Flatten the image tensors
-            X_test = X_test.view(X_test.shape[0], -1)
+            output = model(X_test)
+            _, predicted = torch.max(output, 1)
 
-            # Make predictions
-            y_val = model(X_test)
-
-            # Get the predicted labels
-            predicted = torch.max(y_val.data, 1)[1]
-
-            # Append the true labels and predicted labels to the lists
             true_labels.extend(y_test.cpu().numpy())
             predicted_labels.extend(predicted.cpu().numpy())
 
     # Calculate the confusion matrix
     cm = confusion_matrix(true_labels, predicted_labels)
+    class_labels = [str(i) for i in range(10)]
 
-    # Plot the confusion matrix
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-    plt.title('Confusion Matrix')
-    st.pyplot(plt)
+    # Display the confusion matrix using ConfusionMatrixDisplay
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_labels)
+
+    # Create a figure and axis explicitly
+    fig, ax = plt.subplots(figsize=(10, 8))
+    disp.plot(ax=ax, cmap='Blues', xticks_rotation='vertical')
+
+    # Display the plot using st.pyplot()
+    st.pyplot(fig)
+
+    return cm, class_labels
 
 if __name__ == '__main__':
     main()
